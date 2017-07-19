@@ -1,0 +1,220 @@
+<!-- TOneverDO: change this section -->
+<!DOCTYPE html>
+<html>
+<header class="info">
+    <hgroup class="about">
+        <h1>50.017 Graphics Final Project</h1>
+        <h2>WebGL implementation of a <br> multi-object system</h2>
+        <h2>Authors: Jermaine|Ping|Zikang</h2>
+    </hgroup>
+    <nav class="more">
+				<a class='super' href="ball.html">Transparent Balls</a> <br>
+        <a class='super' href="ocean.html">The Sea</a> <br>
+        <a class='super' href="merge.html">Isosurface & Metaballs: </a> <br>	
+    </nav>
+</header>
+<body></body>
+<link rel="stylesheet" type="text/css" href="style.css">
+<!-- TOneverDO: change this section -->
+
+<script src="three.min.js"></script>
+<script src="js/Stats.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/controls/OrbitControls.js"></script>
+<script>
+	if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+	var container;
+	var camera, scene, renderer;
+	var cameraCube, sceneCube;
+	var mesh, lightMesh, geometry;
+	var spheres = [];
+	var directionalLight, pointLight;
+	var mouseX = 0, mouseY = 0;
+	var windowHalfX = window.innerWidth / 2;
+	var windowHalfY = window.innerHeight / 2;
+	var controls;
+	// Main 
+	init();
+	animate();
+	
+	function init() {
+		container = document.createElement( 'div' );
+		document.body.appendChild( container );
+		camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 0.5, 30000000000 );
+		camera.position.set( 2000, 750, 2000 );
+
+		cameraCube = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 100000 );
+		scene = new THREE.Scene();
+		sceneCube = new THREE.Scene();
+
+
+		//skybox
+		var path = "skybox/";
+		var format = '.jpg';
+		var urls = [
+			path + 'px' + format, path + 'nx' + format,
+			path + 'py' + format, path + 'ny' + format,
+			path + 'pz' + format, path + 'nz' + format
+		];
+		var textureCube = new THREE.CubeTextureLoader().load( urls );
+		textureCube.mapping = THREE.CubeRefractionMapping;
+
+		//lights
+		scene.add( new THREE.AmbientLight( 0x444444 ) );
+		var light = new THREE.DirectionalLight( 0xffffbb, 1 );
+		light.position.set( - 1, 1, - 1 );
+		scene.add( light );
+
+		stats = new Stats();
+	  stats.domElement.style.position = 'absolute';
+	  stats.domElement.style.bottom = '0px';
+	  stats.domElement.style.zIndex = 100;
+	  container.appendChild( stats.domElement );
+
+		//adding the balls
+		var num_ball = 20;
+		var POS = 500, VEL = 500;
+		var sphere_geometry = new THREE.SphereBufferGeometry( 100, 30, 30 ); //radius, hori, vert
+		var sphere_material = new THREE.MeshBasicMaterial( { color: 0xffffff, envMap: textureCube, refractionRatio: 0.8 } );
+		for ( var i = 0; i < num_ball; i ++ ) {
+			var ball = {};
+			var sphere_mesh = new THREE.Mesh( sphere_geometry, sphere_material );
+			ball.obj = sphere_mesh;
+			ball.x = POS*Math.random() - 9;   // set random ball position
+      ball.y = POS*Math.random() - 9;
+      ball.z = POS*Math.random() - 9;
+      ball.dx = Math.random() * VEL + 3;  // set random ball velocity, in units per second
+      ball.dy = Math.random() * VEL + 3;
+      ball.dz = Math.random() * VEL + 3;
+      if (Math.random() < 0.5) ball.dx = -ball.dx;
+      if (Math.random() < 0.5) ball.dy = -ball.dy;
+      if (Math.random() < 0.5) ball.dz = -ball.dz;
+      ball.obj.position.set( ball.x, ball.y, ball.z);
+      scene.add(ball.obj);
+			spheres.push( ball );
+		}
+
+		//scene cube
+		var shader = THREE.ShaderLib[ "cube" ];
+		shader.uniforms[ "tCube" ].value = textureCube;
+		var material = new THREE.ShaderMaterial( {
+			fragmentShader: shader.fragmentShader,
+			vertexShader: shader.vertexShader,
+			uniforms: shader.uniforms,
+			depthWrite: false,
+			side: THREE.BackSide
+		} );
+		mesh = new THREE.Mesh( new THREE.BoxGeometry( 10, 10, 10 ), material );
+		sceneCube.add( mesh );
+		
+		//renderer
+		renderer = new THREE.WebGLRenderer();
+		renderer.setPixelRatio( window.devicePixelRatio );
+		renderer.setSize( window.innerWidth, window.innerHeight );
+		renderer.autoClear = false;
+		container.appendChild( renderer.domElement );
+
+		controls = new THREE.OrbitControls(camera, renderer.domElement);
+		//start animation
+		window.addEventListener( 'resize', onWindowResize, false );
+		startAnimation();
+	}
+
+
+	function onWindowResize() {
+		windowHalfX = window.innerWidth / 2,
+		windowHalfY = window.innerHeight / 2,
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+		cameraCube.aspect = window.innerWidth / window.innerHeight;
+		cameraCube.updateProjectionMatrix();
+		renderer.setSize( window.innerWidth, window.innerHeight );
+	}
+
+	////////////////
+	/* Animations */
+	////////////////
+
+	var clock;  // Keeps track of elapsed time of animation.
+	var animating = false;
+	function animate() {
+		updateForFrame();
+		requestAnimationFrame( animate );
+		render();
+	}
+	
+	function doFrame() {  
+		if (animating) {
+	        clock.frameNumber++;
+		    updateForFrame();
+		    render();
+			requestAnimationFrame(doFrame); 
+		}
+	}
+
+	function startAnimation() {
+	    if (!animating) {
+		   if (!clock) {
+			  clock = new THREE.Clock(false);
+			  clock.frameNumber = 0;
+			  clock.getFrameNumber = function() { return this.frameNumber }
+		   }
+		   clock.start();
+		   animating = true;
+		   requestAnimationFrame(doFrame);
+		}
+	}
+
+	function updateForFrame() { 
+		//update ball positions and velocity
+		stats.update();
+		controls.update();
+	   var dt = clock.getDelta();  // time since last update
+	   if (dt > 0.5) return;  //very long never update, animation paused for some reason
+	  
+  for (var i = 0; i < spheres.length; i++) {
+       var ball = spheres[i];
+      
+       ball.x += ball.dx * dt;
+       ball.y += ball.dy * dt;
+       ball.z += ball.dz * dt;
+       var right = 1000, left =   -1000;
+       var top 	 = 1000, bottom = 100;
+       var front = 1000, back = 	 -1000;
+       if (ball.x > right) {
+           ball.x -= 2*(ball.x - right);
+           ball.dx = -Math.abs(ball.dx);
+       }else if (ball.x < left) {
+           ball.x += 2*(left - ball.x);
+           ball.dx = Math.abs(ball.dx);
+       }
+
+       if (ball.y > top) {
+           ball.y -= 2*(ball.y - top);
+           ball.dy = -Math.abs(ball.dy);
+       }else if (ball.y < bottom) {
+           ball.y += 2*(bottom - ball.y);
+           ball.dy = Math.abs(ball.dy);
+       }
+
+       if (ball.z > front) {
+           ball.z -= 2*(ball.z - front);
+           ball.dz = -Math.abs(ball.dz);
+       }else if (ball.z < back) {
+           ball.z += 2*(back - ball.z);
+           ball.dz = Math.abs(ball.dz);
+       }
+       
+       ball.obj.position.set(ball.x, ball.y, ball.z);
+   }
+	}
+
+	function render() {
+		var timer = 0.0001 * Date.now();
+		camera.lookAt( scene.position );
+		cameraCube.rotation.copy( camera.rotation );
+		renderer.render( sceneCube, cameraCube );
+		renderer.render( scene, camera );
+	}
+</script>
+</html>

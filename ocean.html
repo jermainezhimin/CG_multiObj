@@ -1,0 +1,431 @@
+<!-- TOneverDO: change this section -->
+<!DOCTYPE html>
+<html>
+<header class="info">
+    <hgroup class="about">
+        <h1>50.017 Graphics Final Project</h1>
+        <h2>WebGL implementation of a <br> multi-object system</h2>
+        <h2>Authors: Jermaine|Ping|Zikang</h2>
+    </hgroup>
+    <nav class="more">
+				<a class='super' href="ball.html">Transparent Balls</a> <br>
+        <a class='super' href="ocean.html">The Sea</a> <br>
+        <i><a> Use up arrow key to brighten the sky; down arrow key to darken it.</a> </i> <br>
+        <a class='super' href="merge.html">Isosurface & Metaballs: </a> <br>
+    </nav>
+</header>
+<body></body>
+<link rel="stylesheet" type="text/css" href="style.css">
+<!-- TOneverDO: change this section -->
+
+		<script src="three.min.js"></script>
+		<script src="js/Stats.js"></script>
+		<script src="js/controls/OrbitControls.js"></script>
+		<script src="js/Mirror.js"></script>
+		<script src="js/WaterShader.js"></script>
+
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+
+	    <script type="x-shader/x-fragment" id="fragmentShader">
+	        //shader script for the sky box cube texturing
+	        uniform samplerCube tCube;	
+	        uniform float tFlip;
+	        uniform vec4 darkness;
+
+			varying vec3 vWorldPosition;
+			
+
+			#include <common>
+			#include <logdepthbuf_pars_fragment>
+												
+			void main() {
+				gl_FragColor = textureCube( tCube, vec3( tFlip * vWorldPosition.x, vWorldPosition.yz ) ) - darkness;
+				#include <logdepthbuf_fragment>
+			}
+	    
+	    </script>
+
+		<script>
+			//main script begins here
+			//checks for webgl support
+			if ( ! Detector.webgl ) {
+
+				Detector.addGetWebGLMessage();
+				document.getElementById( 'container' ).innerHTML = "";
+
+			}
+
+			//to trouble shoot the frame rates and lags and also run time variables
+			var container, stats;
+			var sunColor = new THREE.Vector4 (0.0,0.0,0.0,0.0);
+			var sunPos = new THREE.Vector3 (-3000,3000,-3000);
+
+			//render to texture RTT stuff
+			var cameraSphere,cameraTorus,cameraCone,cameraCube;
+
+			//scene objects
+			var camera, scene, renderer;
+			var uniforms;
+			var stats;
+			//water intitalizers
+			var parameters = {
+				width: 2000,
+				height: 2000,
+				widthSegments: 250,
+				heightSegments: 250,
+				depth: 1500,
+				param: 4,
+				filterparam: 1
+			};
+
+			var waterNormals;
+
+			//intialization and animation sequences
+			init();
+			animate();
+
+			//initializing sequence
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				//render to texture RTT stuff
+				renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				container.appendChild( renderer.domElement );
+				
+				//drawing the scene
+				scene = new THREE.Scene();
+
+				//camera that views the scene
+				camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 0.5, 3000000 );
+				camera.position.set( 2000, 750, 2000 );
+
+				//render to texture RTT stuff
+				cameraSphere = new THREE.CubeCamera( 1, 30000000, 1024 );
+				scene.add(cameraSphere);
+				cameraTorus = new THREE.CubeCamera( 1, 30000000, 1024 );
+				scene.add(cameraTorus);
+				cameraCone = new THREE.CubeCamera( 1, 30000000, 1024 );
+				scene.add(cameraCone);
+				cameraCube = new THREE.CubeCamera( 1, 30000000, 1024 );
+				scene.add(cameraCube);
+
+				//defining the controls to look at the scene
+				controls = new THREE.OrbitControls( camera, renderer.domElement );
+				controls.enablePan = false;
+				controls.minDistance = 1000.0;
+				controls.maxDistance = 5000.0;
+				controls.maxPolarAngle = Math.PI * 0.495;
+				controls.target.set( 0, 500, 0 );
+
+				//light to make sure objects in screen are lit
+				scene.add( new THREE.AmbientLight( 0x444444 ) );
+
+				//gives the position of the general light to render the additional created objects
+				var light = new THREE.DirectionalLight( 0xffffbb, 1 );
+				light.position.set( sunPos.normalize );
+				scene.add( light );
+
+				//lens flares initializer
+				var textureLoader = new THREE.TextureLoader();
+				var textureFlare0 = textureLoader.load( "textures/lensflare/lensflare0.png" );
+				var textureFlare2 = textureLoader.load( "textures/lensflare/lensflare2.png" );
+				var textureFlare3 = textureLoader.load( "textures/lensflare/lensflare3.png" );
+				addLight( 0.08, 0.8, 0.5, -3000, 3000, -3000 );
+				
+				//lens flare function
+				function addLight( h, s, l, x, y, z ) {
+					var light = new THREE.PointLight( 0xffffff, 1.5, 2000 );
+					light.color.setHSL( h, s, l );
+					light.position.set( x, y, z );
+					scene.add( light );
+					var flareColor = new THREE.Color( 0xffffff );
+					flareColor.setHSL( h, s, l + 0.5 );
+					var lensFlare = new THREE.LensFlare( textureFlare0, 700, 0.0, THREE.AdditiveBlending, flareColor );
+					lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 60, 0.6, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 70, 0.7, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 120, 0.9, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 70, 1.0, THREE.AdditiveBlending );
+					lensFlare.customUpdateCallback = lensFlareUpdateCallback;
+					lensFlare.position.copy( sunPos );
+					scene.add( lensFlare );
+				}
+
+				//update function for the lens flare so it changes as the camera changes view
+				function lensFlareUpdateCallback( object ) {
+					object.position.copy(sunPos);
+					var f, fl = object.lensFlares.length;
+					var flare;
+					var vecX = -object.positionScreen.x * 2;
+					var vecY = -object.positionScreen.y * 2;
+					for( f = 0; f < fl; f++ ) {
+						flare = object.lensFlares[ f ];
+						flare.x = object.positionScreen.x + vecX * flare.distance;
+						flare.y = object.positionScreen.y + vecY * flare.distance;
+						flare.rotation = 0;
+						//updates the flare colour if needed
+						flare.color.set(0xffffff);
+					}
+
+					object.lensFlares[ 2 ].y += 0.025;
+					object.lensFlares[ 3 ].rotation = object.positionScreen.x * 0.5 + THREE.Math.degToRad( 45 );
+				}
+
+				//loading the one tile water texture
+				waterNormals = new THREE.TextureLoader().load( 'textures/waternormals.jpg' );
+				waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+
+				//create the water shaders and material
+				water = new THREE.Water( renderer, camera, scene, {
+					textureWidth: 512,
+					textureHeight: 512,
+					waterNormals: waterNormals,
+					alpha: 	1.0,
+					sunDirection: light.position.clone().normalize(),
+					sunColor: 0xffffff,
+					waterColor: 0x001e0f,
+					distortionScale: 100.0,
+				} );
+
+				//applying the material onto a plane that simply looks like terrain
+				mirrorMesh = new THREE.Mesh(
+					new THREE.PlaneBufferGeometry( parameters.width * 500, parameters.height * 500 ),
+					water.material
+				);
+
+				//adding the reflection and refraction to the water
+				mirrorMesh.add( water );
+				mirrorMesh.rotation.x = - Math.PI * 0.5;
+				scene.add( mirrorMesh );
+
+				// load skybox from a text box
+				var cubeMap = new THREE.CubeTexture( [] );
+				cubeMap.format = THREE.RGBAFormat;
+
+				var loader = new THREE.ImageLoader();
+				loader.load( 'textures/skyboxsun25degtest.png', function ( image ) {
+
+					var getSide = function ( x, y ) {
+
+						var size = 1024;
+
+						var canvas = document.createElement( 'canvas' );
+						canvas.width = size;
+						canvas.height = size;
+
+						var context = canvas.getContext( '2d' );
+						context.drawImage( image, - x * size, - y * size );
+
+						return canvas;
+
+					};
+
+					cubeMap.images[ 0 ] = getSide( 2, 1 ); // px
+					cubeMap.images[ 1 ] = getSide( 0, 1 ); // nx
+					cubeMap.images[ 2 ] = getSide( 1, 0 ); // py
+					cubeMap.images[ 3 ] = getSide( 1, 2 ); // ny
+					cubeMap.images[ 4 ] = getSide( 1, 1 ); // pz
+					cubeMap.images[ 5 ] = getSide( 3, 1 ); // nz
+					cubeMap.needsUpdate = true;
+
+				} );
+
+				//references the shader library for cube mapping
+	            uniforms = {
+	                tCube: {type: "t", value: cubeMap},
+	                tFlip: {type: "f", value: -1},
+	                darkness: {type: "v4", value: new THREE.Vector4( 0.7, 0.7, 0.7, 0.0 ) }
+	            }
+
+				var cubeShader = THREE.ShaderLib[ 'cube' ];
+				cubeShader.fragmentShader = document.getElementById( 'fragmentShader' ).textContent;
+				cubeShader.uniforms = uniforms;
+				cubeShader.uniforms[ 'tCube' ].value = cubeMap;
+				cubeShader.uniforms[ 'darkness' ].value = sunColor ;
+
+				//apply shaders for cube mapping
+				var skyBoxMaterial = new THREE.ShaderMaterial( {
+					fragmentShader: cubeShader.fragmentShader,
+					vertexShader: cubeShader.vertexShader,
+					uniforms: cubeShader.uniforms,
+					depthWrite: false,
+					side: THREE.BackSide,
+				} );
+
+				//draws skyboxes on the box
+				var skyBox = new THREE.Mesh(
+					new THREE.BoxGeometry( 1000000, 1000000, 1000000),
+					skyBoxMaterial
+				);
+
+				//adds the skybox to the scene
+				scene.add( skyBox );
+
+					stats = new Stats();
+			  stats.domElement.style.position = 'absolute';
+			  stats.domElement.style.bottom = '0px';
+			  stats.domElement.style.zIndex = 100;
+			  container.appendChild( stats.domElement );
+				//refraction
+				var sphereTarget = cameraSphere.renderTarget;
+				sphereTarget.mapping = THREE.CubeRefractionMapping;
+				var sphereMaterial = new THREE.MeshBasicMaterial( {
+					color: 0xffffff,
+					envMap: sphereTarget,
+					refractionRatio: 0.1
+				} );
+
+				var torusTarget = cameraTorus.renderTarget;
+				torusTarget.mapping = THREE.CubeRefractionMapping;
+				var torusMaterial = new THREE.MeshBasicMaterial( {
+					color: 0xffffff,
+					envMap: torusTarget,
+					refractionRatio: 0.1
+				} );
+
+				var coneTarget = cameraCone.renderTarget;
+				coneTarget.mapping = THREE.CubeRefractionMapping;
+				var coneMaterial = new THREE.MeshBasicMaterial( {
+					color: 0xffffff,
+					envMap: coneTarget,
+					refractionRatio: 0.1
+				} );
+
+				sphere = new THREE.Mesh( new THREE.SphereGeometry(400,400,400), sphereMaterial );
+				cone = new THREE.Mesh( new THREE.CylinderGeometry( 1, 300, 500, 32 ), coneMaterial );
+				torus = new THREE.Mesh( new THREE.TorusKnotGeometry(200,50,200), torusMaterial);
+				scene.add( sphere );
+				scene.add( cone );
+				scene.add( torus );
+
+
+				//reflection
+				var cubeTarget = cameraCube.renderTarget;
+				var cubeMaterial = new THREE.MeshBasicMaterial( {
+					color: 0x76e7f1,
+					envMap: cameraCube.renderTarget,
+				} );
+
+				cube = new THREE.Mesh( new THREE.CubeGeometry( 50, 1000, 1000), cubeMaterial );
+				scene.add( cube );
+
+			}
+
+
+			//checks for on click effects
+			document.addEventListener( 'keydown', onKeyDown );
+
+			//pressing the up button causes a sunrise and conversely for the down button
+			function onKeyDown ( event ) {
+			// the keycode of the key pressed 
+			switch( event.keyCode ) {
+				case 40: // down
+				case 83: // s
+
+					if (sunColor.x < 0.7){
+						sunColor.x += 0.05;
+						sunColor.y += 0.05;
+						sunColor.z += 0.05;
+					}
+
+					if (sunPos.y >1000){
+						sunPos.y -= 75;
+					}
+				
+					break;
+
+				case 38: // up
+				case 87: // w
+
+					if (sunColor.x > 0.0) {
+						sunColor.x -= 0.05;
+						sunColor.y -= 0.05;
+						sunColor.z -= 0.05;
+					};
+
+					if (sunPos.y <3000){
+						sunPos.y += 75;
+					}
+
+					break;
+				} 
+			}
+
+			//animate
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+				render();
+
+			}
+
+			function render() {
+
+				//continously allows the program to render but slows down if performance too low
+				var time = performance.now() * 0.001;
+
+				//moves sphere cube camera
+				cameraSphere.position.x = Math.sin( time * 0.9  + 0 ) * 1500 ;
+				cameraSphere.position.y = Math.sin( time * 1.0  + 0 ) * 500 + 1500;
+				cameraSphere.position.z = Math.sin( time * 1.1  + 0 ) * 1500;
+
+				//update projected sphere object
+				sphere.rotation.x = time * 0.5;
+				sphere.rotation.y = time * 0.5;
+				sphere.rotation.z = time * 0.5;
+				
+				sphere.position.set(cameraSphere.position.x,cameraSphere.position.y,cameraSphere.position.z);				
+				
+				//moves torus cube camera
+				cameraTorus.position.x = Math.sin( time * 0.9  + 2 ) * 1500 ;
+				cameraTorus.position.y = Math.sin( time * 1.0  + 2 ) * 500 + 1500;
+				cameraTorus.position.z = Math.sin( time * 1.1  + 2 ) * 1500;
+
+				//update projected torus object
+				torus.rotation.x = time * 0.5;
+				torus.rotation.y = time * 0.5;
+				torus.rotation.z = time * 0.5;
+				
+				torus.position.set(cameraTorus.position.x,cameraTorus.position.y,cameraTorus.position.z);	
+				
+				cameraCone.position.x = Math.sin( time * 0.9  + 4 ) * 1500 ;
+				cameraCone.position.y = Math.sin( time * 1.0  + 4 ) * 500 + 1500;
+				cameraCone.position.z = Math.sin( time * 1.1  + 4 ) * 1500;
+
+				cone.rotation.x = time * 0.5;
+				cone.rotation.y = time * 0.5;
+				cone.rotation.z = time * 0.5;
+				
+				cone.position.set(cameraCone.position.x,cameraCone.position.y,cameraCone.position.z);
+
+				cameraCube.position.y = Math.sin( time * 1.0 + 6 ) * 250 + 1500;
+				cameraCube.position.x = 0;
+				cameraCube.position.z = 0;
+
+				cube.position.set(cameraCube.position.x,cameraCube.position.y,cameraCube.position.z);		
+
+				cameraSphere.updateCubeMap( renderer, scene );
+				cameraTorus.updateCubeMap( renderer, scene );
+				cameraCone.updateCubeMap( renderer, scene );
+				cameraCube.updateCubeMap( renderer, scene );
+
+				//update the time value which updates all the in function variables to start animation
+				water.material.uniforms.time.value += 1.0 / 60.0;
+				controls.update();
+				stats.update();
+				water.render();
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

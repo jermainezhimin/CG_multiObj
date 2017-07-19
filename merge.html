@@ -1,0 +1,335 @@
+<!-- TOneverDO: change this section -->
+<!DOCTYPE html>
+<html>
+<header class="info">
+    <hgroup class="about">
+        <h1>50.017 Graphics Final Project</h1>
+        <h2>WebGL implementation of a <br> multi-object system</h2>
+        <h2>Authors: Jermaine|Ping|Zikang</h2>
+    </hgroup>
+    <nav class="more">
+        <a class='super' href="ball.html">Transparent Balls</a> <br>
+        <a class='super' href="ocean.html">The Sea</a> <br>
+        <a class='super' href="merge.html">Isosurface & Metaballs<br>(choose shape): </a> <br>
+        <i><a onclick="do_this(1)">spheres</a></i>
+        <i><a onclick="do_this(0)">slower_spheres</a></i>
+        <i><a onclick="do_this(2)">diamonds</a></i> 
+        
+        <i><a onclick="do_this(3)">ellipses</a></i>
+    </nav>
+</header>
+<body id="container"></body>
+<link rel="stylesheet" type="text/css" href="style.css">
+<!-- TOneverDO: change this section -->
+
+<script src="three.min.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/marching_cubes_tables.js"></script>
+<script src="js/shaders/FresnelShader.js"></script>
+<script src="js/Stats.js"></script>
+<script src="js/controls/OrbitControls.js"></script>
+<script src="js/THREEx.KeyboardState.js"></script>
+<script src="js/THREEx.FullScreen.js"></script>
+<script src="js/THREEx.WindowResize.js"></script>
+<script type="text/javascript">
+
+var container, scene, camera, renderer, controls, stats;
+var clock = new THREE.Clock();
+var list;
+var radius = 0.6;
+var speed = 0.6;
+var num_ball = 20;
+var values;
+var points;
+var mesh;
+var customMaterial;
+var threshold = 0.5;
+var size, size2, size3;
+var DIAMOND = 2, SPHERE = 1, SLOWER = 0, ELLIPSE = 3;
+var SHAPE = SPHERE;
+
+init();
+animate();
+function do_this (i) {
+  SHAPE = i;
+}
+function init() 
+{
+  //gen random numbers
+  list = []
+  for(var i=0;i<num_ball;i++){
+    list.push([Math.random() * 5, Math.random() * 3, 
+              Math.random() * 5, Math.random() * 3, 
+              Math.random() * 5, Math.random() * 3
+     ]) 
+  }
+
+  scene = new THREE.Scene();
+  var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
+  var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.1, FAR = 20000;
+  camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR);
+  scene.add(camera);
+  camera.position.set(2,1,30);
+  camera.lookAt(scene.position);  
+  if (Detector.webgl)
+    renderer = new THREE.WebGLRenderer({antialias:true});
+  else
+    renderer = new THREE.CanvasRenderer(); 
+  renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+  container = document.getElementById('container');
+  container.appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  
+  stats = new Stats();
+  stats.domElement.style.position = 'absolute';
+  stats.domElement.style.bottom = '0px';
+  stats.domElement.style.zIndex = 100;
+  container.appendChild(stats.domElement);
+
+
+  //lights
+  scene.add(new THREE.AmbientLight(0x444444));
+  var light = new THREE.DirectionalLight(0xffffbb, 1);
+  light.position.set(- 1, 1, - 1);
+  scene.add(light);
+
+  // skybox
+  var skyGeometry = new THREE.CubeGeometry(5000, 5000, 5000); 
+  var path = "skybox/";
+  var format = '.jpg';
+  var name = ['px', 'nx', 'py', 'ny', 'pz', 'nz'];
+  var urls = [
+          path + 'px' + format, path + 'nx' + format,
+          path + 'py' + format, path + 'ny' + format,
+          path + 'pz' + format, path + 'nz' + format
+       ];
+  var materialArray = [];
+  for (var i = 0; i < 6; i++)
+    materialArray.push(new THREE.MeshBasicMaterial({
+      map: THREE.ImageUtils.loadTexture(path + name[i] + format),
+      side: THREE.BackSide
+    }));
+  var skyMaterial = new THREE.MeshFaceMaterial(materialArray);
+  var skyBox = new THREE.Mesh(skyGeometry, skyMaterial);
+  scene.add(skyBox);
+  
+  var bound_min = -10;
+  var bound_max =  10; //size of the box
+  var bound_range = bound_max - bound_min;
+
+  size  = 50;  
+  size2 = size*size; 
+  size3 = size*size*size;
+  points = []; //all 3-D cubes' top-left corner
+  values = []; //values of the function at all small cubes
+  
+  //divide the space into 3D cubes
+  for (var k = 0; k < size; k++)
+  for (var j = 0; j < size; j++)
+  for (var i = 0; i < size; i++)
+  {
+    var x = bound_min + bound_range * i / (size - 1);
+    var y = bound_min + bound_range * j / (size - 1);
+    var z = bound_min + bound_range * k / (size - 1);
+    points.push(new THREE.Vector3(x,y,z));
+  }
+  
+  for (var i = 0; i < size3; i++) 
+    values[i] = 0;
+
+    //add the balls
+    for(var i=0;i<num_ball;i++){
+      a = 1; b = 1; c = 1;
+      if(Math.random() < 0.5) a = -1;
+      if(Math.random() < 0.5) b = -1;
+      if(Math.random() < 0.5) c = -1;
+      add_ball(points, values, new THREE.Vector3(6 * a * Math.random(), 6 * b * Math.random(), 6 * c * Math.random()));
+    }
+
+  var geometry = marchingCubes(points, values, threshold);
+  var textureCube = THREE.ImageUtils.loadTextureCube(urls);
+  textureCube.format = THREE.RGBFormat;
+
+  var fShader = THREE.FresnelShader;
+  var fresnelUniforms = 
+  {
+    "mRefractionRatio": { type: "f", value: 0.3 },
+    "mFresnelBias":   { type: "f", value: 1.0 },
+    "mFresnelPower":  { type: "f", value: 1.0 },
+    "mFresnelScale":  { type: "f", value: 1.0 },
+    "tCube":      { type: "t", value: textureCube }
+  };  
+  customMaterial = new THREE.ShaderMaterial(
+  {
+      uniforms:     fresnelUniforms,
+    vertexShader:   fShader.vertexShader,
+    fragmentShader: fShader.fragmentShader
+  });
+  
+  mesh = new THREE.Mesh(geometry, customMaterial);
+  scene.add(mesh);  
+}
+
+function animate() 
+{
+  requestAnimationFrame(animate);
+  render();   
+  update();
+}
+
+function update()
+{
+  controls.update();
+  stats.update();
+  var t = clock.getElapsedTime();
+  update_ball(speed * t); 
+}
+
+function render() 
+{
+  renderer.render(scene, camera);
+}
+
+function add_ball(points, values, center)
+{
+  for (var i = 0; i < values.length; i++)
+  {
+    var r = 0;
+    if(SHAPE == SPHERE){
+      r = center.distanceToSquared(points[i]);
+      if(r < 0.9) values[i] += ((1-r) * (1-r));
+    }
+    if(SHAPE == SLOWER){
+      r = center.distanceToSquared(points[i]);
+      values[i] += Math.exp(- Math.abs(r));
+    }
+    if(SHAPE == DIAMOND){
+      r = Math.abs(center.x - points[i].x) + 
+        Math.abs(center.y - points[i].y) + 
+        Math.abs(center.z - points[i].z);
+      values[i] += 1.2 * Math.exp(- Math.abs(r));
+    }
+    if(SHAPE == ELLIPSE){
+      var c = 1, b = 0.4, a = 0.8; 
+      r = (center.x - points[i].x) * (center.x - points[i].x) * a +
+          (center.y - points[i].y) * (center.y - points[i].y) * b +
+          (center.z - points[i].z) * (center.z - points[i].z) * c;
+      values[i] += 0.8 * Math.exp(- Math.abs(r));
+    }
+  }
+}
+
+function update_ball(t)
+{
+  //reset values;
+  for (var i = 0; i < values.length; i++)
+    values[i] = 0;
+
+  for(var i=0;i<num_ball/2;i++){
+    add_ball(points, values, new THREE.Vector3(
+      list[i][0] * Math.cos(list[i][1] * t), 
+      list[i][2] * Math.sin(list[i][3] * t), 
+      list[i][4] * Math.sin(list[i][5] * t)));
+  }
+  for(var i=num_ball/2;i<num_ball;i++){
+    add_ball(points, values, new THREE.Vector3(
+      list[i][0] * Math.sin(list[i][1] * t), 
+      list[i][2] * Math.sin(list[i][3] * t), 
+      list[i][4] * Math.cos(list[i][5] * t)));
+  }
+  scene.remove(mesh);
+  var newGeometry = marchingCubes(points, values, threshold);
+  mesh = new THREE.Mesh(newGeometry, customMaterial);
+  scene.add(mesh);
+}
+
+function gen_point(v1, v2, p1, p2){
+  var percent= (threshold - v1) / (v2 - v1);
+  return p1.clone().lerp(p2, percent);
+}
+
+function marchingCubes(points, values, threshold)
+{
+  var edge_point = new Array(12); // 12 edges
+  var geometry = new THREE.Geometry();
+  var vertex_index = 0;
+  
+  for (var z = 0; z < size - 1; z++)
+  for (var y = 0; y < size - 1; y++)
+  for (var x = 0; x < size - 1; x++){
+    var p    = x + size * y + size2 * z,
+      px   = p   + 1,
+      py   = p   + size,
+      pxy  = py  + 1,
+      pz   = p   + size2,
+      pxz  = px  + size2,
+      pyz  = py  + size2,
+      pxyz = pxy + size2;
+    
+    //8 vertex values of a cube
+    var value0 = values[p],
+      value1 = values[px],
+      value2 = values[py],
+      value3 = values[pxy],
+      value4 = values[pz],
+      value5 = values[pxz],
+      value6 = values[pyz],
+      value7 = values[pxyz];
+
+    var edge_index = 0;
+    if (value0 < threshold) edge_index |= 1;
+    if (value1 < threshold) edge_index |= 2;
+    if (value2 < threshold) edge_index |= 8;
+    if (value3 < threshold) edge_index |= 4;
+    if (value4 < threshold) edge_index |= 16;
+    if (value5 < threshold) edge_index |= 32;
+    if (value6 < threshold) edge_index |= 128;
+    if (value7 < threshold) edge_index |= 64;
+    
+    var this_edge = THREE.edgeTable[edge_index];
+    if (this_edge === 0) continue; //no edge has been crossed
+    
+    var percent = 1; 
+    //estimate point locations on edge by interperlating points 
+    if (this_edge & 1) edge_point[0] = gen_point(value0, value1, points[p], points[px])
+    if (this_edge & 2) edge_point[1] = gen_point(value1, value3, points[px], points[pxy])
+    if (this_edge & 4) edge_point[2] = gen_point(value2, value3, points[py], points[pxy])
+    if (this_edge & 8) edge_point[3] = gen_point(value0, value2, points[p], points[py])
+    if (this_edge & 16) edge_point[4] = gen_point(value4, value5, points[pz], points[pxz])
+    if (this_edge & 32) edge_point[5] = gen_point(value5, value7, points[pxz], points[pxyz])
+    if (this_edge & 64) edge_point[6] = gen_point(value6, value7, points[pyz], points[pxyz])
+    if (this_edge & 128) edge_point[7] = gen_point(value4, value6, points[pz], points[pyz])
+    if (this_edge & 256) edge_point[8] = gen_point(value0, value4, points[p], points[pz])
+    if (this_edge & 512) edge_point[9] = gen_point(value1, value5, points[px], points[pxz])
+    if (this_edge & 1024) edge_point[10] = gen_point(value3, value7, points[pxy], points[pxyz])
+    if (this_edge & 2048) edge_point[11] = gen_point(value2, value6, points[py], points[pyz])
+    
+    //construct triangles from tri tables
+    var i = 0;
+    edge_index <<= 4;  
+    while (THREE.triTable[edge_index + i] != -1) 
+    {
+      var index1 = THREE.triTable[edge_index + i];
+      var index2 = THREE.triTable[edge_index + i + 1];
+      var index3 = THREE.triTable[edge_index + i + 2];
+      geometry.vertices.push(edge_point[index1].clone());
+      geometry.vertices.push(edge_point[index2].clone());
+      geometry.vertices.push(edge_point[index3].clone());
+      var face = new THREE.Face3(vertex_index, vertex_index+1, vertex_index+2);
+      geometry.faces.push(face);
+      geometry.faceVertexUvs[0].push([new THREE.Vector2(0,0), new THREE.Vector2(0,1), new THREE.Vector2(1,1)]);
+      vertex_index += 3;
+      i += 3;
+    }
+  }
+  geometry.mergeVertices();
+  geometry.computeFaceNormals();
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+</script>
+
+
+</html>

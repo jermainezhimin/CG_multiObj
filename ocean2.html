@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset=utf-8>
+		<title>Ocean Scene</title>
+		<style>
+			body { margin: 0; }
+			canvas { width: 100%; height: 100% }
+		</style>
+	</head>
+	<body>
+
+		<div id="info"><a href="http://threejs.org" target="_blank">three.js</a> - webgl ocean demo</div>
+
+		<script src="three.min.js"></script>
+
+		<script src="js/controls/OrbitControls.js"></script>
+		<script src="js/Mirror.js"></script>
+		<script src="js/WaterShader.js"></script>
+
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+
+		<script>
+
+			if ( ! Detector.webgl ) {
+
+				Detector.addGetWebGLMessage();
+				document.getElementById( 'container' ).innerHTML = "";
+
+			}
+
+			var container, stats;
+
+			//render to texture RTT stuff
+			var cameraRTT;
+
+			var camera, scene, renderer;
+			var sphere;
+
+			var parameters = {
+				width: 2000,
+				height: 2000,
+				widthSegments: 250,
+				heightSegments: 250,
+				depth: 1500,
+				param: 4,
+				filterparam: 1
+			};
+
+			var waterNormals;
+
+			init();
+			animate();
+
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				//render to texture RTT stuff
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				container.appendChild( renderer.domElement );
+
+				scene = new THREE.Scene();
+
+				camera = new THREE.PerspectiveCamera( 55, window.innerWidth / window.innerHeight, 0.5, 3000000 );
+				camera.position.set( 2000, 750, 2000 );
+
+				//render to texture RTT stuff
+				cameraRTT = new THREE.CubeCamera( 1, 30000000, 1024 );
+				cameraRTT.position.y = 750;
+				scene.add(cameraRTT);
+
+
+				controls = new THREE.OrbitControls( camera, renderer.domElement );
+				controls.enablePan = false;
+				controls.minDistance = 1000.0;
+				controls.maxDistance = 5000.0;
+				controls.maxPolarAngle = Math.PI * 0.495;
+				controls.target.set( 0, 500, 0 );
+
+				//scene.add( new THREE.AmbientLight( 0x444444 ) );
+
+				var light = new THREE.DirectionalLight( 0xffffbb, 1 );
+				light.position.set( - 1, 1, - 1 );
+				scene.add( light );
+
+				//lens flares
+				var textureLoader = new THREE.TextureLoader();
+				var textureFlare0 = textureLoader.load( "textures/lensflare/lensflare0.png" );
+				var textureFlare2 = textureLoader.load( "textures/lensflare/lensflare2.png" );
+				var textureFlare3 = textureLoader.load( "textures/lensflare/lensflare3.png" );
+				addLight( 0.08, 0.8, 0.5, -3000, 3000, -3000 );
+				
+				
+				function addLight( h, s, l, x, y, z ) {
+					var light = new THREE.PointLight( 0xffffff, 1.5, 2000 );
+					light.color.setHSL( h, s, l );
+					light.position.set( x, y, z );
+					scene.add( light );
+					var flareColor = new THREE.Color( 0xffffff );
+					flareColor.setHSL( h, s, l + 0.5 );
+					var lensFlare = new THREE.LensFlare( textureFlare0, 700, 0.0, THREE.AdditiveBlending, flareColor );
+					lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare2, 512, 0.0, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 60, 0.6, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 70, 0.7, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 120, 0.9, THREE.AdditiveBlending );
+					lensFlare.add( textureFlare3, 70, 1.0, THREE.AdditiveBlending );
+					lensFlare.customUpdateCallback = lensFlareUpdateCallback;
+					lensFlare.position.copy( light.position );
+					scene.add( lensFlare );
+				}
+
+				function lensFlareUpdateCallback( object ) {
+					var f, fl = object.lensFlares.length;
+					var flare;
+					var vecX = -object.positionScreen.x * 2;
+					var vecY = -object.positionScreen.y * 2;
+					for( f = 0; f < fl; f++ ) {
+						flare = object.lensFlares[ f ];
+						flare.x = object.positionScreen.x + vecX * flare.distance;
+						flare.y = object.positionScreen.y + vecY * flare.distance;
+						flare.rotation = 0;
+					}
+					object.lensFlares[ 2 ].y += 0.025;
+					object.lensFlares[ 3 ].rotation = object.positionScreen.x * 0.5 + THREE.Math.degToRad( 45 );
+				}
+
+				waterNormals = new THREE.TextureLoader().load( 'textures/waternormals.jpg' );
+				waterNormals.wrapS = waterNormals.wrapT = THREE.RepeatWrapping;
+
+				water = new THREE.Water( renderer, camera, scene, {
+					textureWidth: 512,
+					textureHeight: 512,
+					waterNormals: waterNormals,
+					alpha: 	1.0,
+					sunDirection: light.position.clone().normalize(),
+					sunColor: 0xffffff,
+					waterColor: 0x001e0f,
+					distortionScale: 100.0,
+				} );
+
+
+				mirrorMesh = new THREE.Mesh(
+					new THREE.PlaneBufferGeometry( parameters.width * 500, parameters.height * 500 ),
+					water.material
+				);
+
+				mirrorMesh.add( water );
+				mirrorMesh.rotation.x = - Math.PI * 0.5;
+				scene.add( mirrorMesh );
+
+				// load skybox
+				var cubeMap = new THREE.CubeTexture( [] );
+				cubeMap.format = THREE.RGBFormat;
+
+				var loader = new THREE.ImageLoader();
+				loader.load( 'textures/skyboxsun25degtest.png', function ( image ) {
+
+					var getSide = function ( x, y ) {
+
+						var size = 1024;
+
+						var canvas = document.createElement( 'canvas' );
+						canvas.width = size;
+						canvas.height = size;
+
+						var context = canvas.getContext( '2d' );
+						context.drawImage( image, - x * size, - y * size );
+
+						return canvas;
+
+					};
+
+					cubeMap.images[ 0 ] = getSide( 2, 1 ); // px
+					cubeMap.images[ 1 ] = getSide( 0, 1 ); // nx
+					cubeMap.images[ 2 ] = getSide( 1, 0 ); // py
+					cubeMap.images[ 3 ] = getSide( 1, 2 ); // ny
+					cubeMap.images[ 4 ] = getSide( 1, 1 ); // pz
+					cubeMap.images[ 5 ] = getSide( 3, 1 ); // nz
+					cubeMap.needsUpdate = true;
+
+				} );
+
+				var cubeShader = THREE.ShaderLib[ 'cube' ];
+				cubeShader.uniforms[ 'tCube' ].value = cubeMap;
+
+				var skyBoxMaterial = new THREE.ShaderMaterial( {
+					fragmentShader: cubeShader.fragmentShader,
+					vertexShader: cubeShader.vertexShader,
+					uniforms: cubeShader.uniforms,
+					depthWrite: false,
+					side: THREE.BackSide,
+				} );
+
+				var skyBox = new THREE.Mesh(
+					new THREE.BoxGeometry( 1000000, 1000000, 1000000 ),
+					skyBoxMaterial
+				);
+
+				scene.add( skyBox );
+
+
+				//reflection and refraction
+				var cubeTarget = cameraRTT.renderTarget;
+				cubeTarget.mapping = THREE.CubeRefractionMapping;
+				//cubeTarget.mapping = THREE.CubeReflectionMapping;
+				var material = new THREE.MeshBasicMaterial( {
+					color: 0xffffff,
+					envMap: cubeTarget,
+					refractionRatio: 0.6
+				} );
+
+				sphere = new THREE.Mesh( new THREE.SphereGeometry(200,200,200), material );
+				scene.add( sphere );
+				sphere.position.y = 750;
+			}
+
+			//animate
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+				render();
+
+			}
+
+			function render() {
+
+				var time = performance.now() * 0.001;
+
+				sphere.rotation.x = time * 0.5;
+				sphere.rotation.z = time * 0.5;
+				
+				cameraRTT.updateCubeMap( renderer, scene );
+
+				water.material.uniforms.time.value += 1.0 / 60.0;
+				controls.update();
+				water.render();
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>

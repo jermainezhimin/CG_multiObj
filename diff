@@ -1,0 +1,98 @@
+4,6c4,9
+< 		<title>three.js webgl - geometry - terrain</title>
+< 		<meta charset="utf-8">
+< 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+---
+> 		<meta charset=utf-8>
+> 		<title>Ocean Scene</title>
+> 		<style>
+> 			body { margin: 0; }
+> 			canvas { width: 100%; height: 100% }
+> 		</style>
+9c12,14
+< 	
+---
+> 
+> 		<div id="info"><a href="http://threejs.org" target="_blank">three.js</a> - webgl ocean demo</div>
+> 
+28a34,37
+> 
+> 			//render to texture RTT stuff
+> 			var cameraRTT;
+> 
+51a61
+> 				//render to texture RTT stuff
+61a72,77
+> 				//render to texture RTT stuff
+> 				cameraRTT = new THREE.CubeCamera( 1, 30000000, 1024 );
+> 				cameraRTT.position.y = 750;
+> 				scene.add(cameraRTT);
+> 
+> 
+69c85
+< 				scene.add( new THREE.AmbientLight( 0x444444 ) );
+---
+> 				//scene.add( new THREE.AmbientLight( 0x444444 ) );
+80,82c96,97
+< 				//addLight( 0.55, 0.9, 0.5, -1000, 1000, -1000 );
+< 				addLight( 0.08, 0.8, 0.5, -1500, 1500, -1500 );
+< 				//addLight( 0.995, 0.5, 0.9,-1000, 1000, -1000 );
+---
+> 				addLight( 0.08, 0.8, 0.5, -3000, 3000, -3000 );
+> 				
+130c145
+< 					distortionScale: 50.0,
+---
+> 					distortionScale: 100.0,
+143d157
+< 
+145d158
+< 
+185c198
+< 					side: THREE.BackSide
+---
+> 					side: THREE.BackSide,
+195,196d207
+< 				//sphere	
+< 				var geometry = new THREE.IcosahedronGeometry( 400, 4 );
+198,207c209,216
+< 				for ( var i = 0, j = geometry.faces.length; i < j; i ++ ) {
+< 
+< 					geometry.faces[ i ].color.setHex( Math.random() * 0xffffff );
+< 
+< 				}
+< 
+< 				var material = new THREE.MeshPhongMaterial( {
+< 					vertexColors: THREE.FaceColors,
+< 					shininess: 100,
+< 					envMap: cubeMap
+---
+> 				//reflection and refraction
+> 				var cubeTarget = cameraRTT.renderTarget;
+> 				cubeTarget.mapping = THREE.CubeRefractionMapping;
+> 				//cubeTarget.mapping = THREE.CubeReflectionMapping;
+> 				var material = new THREE.MeshBasicMaterial( {
+> 					color: 0xffffff,
+> 					envMap: cubeTarget,
+> 					refractionRatio: 0.1
+210c219
+< 				sphere = new THREE.Mesh( geometry, material );
+---
+> 				sphere = new THREE.Mesh( new THREE.SphereGeometry(200,200,200), material );
+212c221
+< 
+---
+> 				sphere.position.y = 750;
+214a224,225
+> 			//animate
+> 
+218a230
+> 
+225d236
+< 				sphere.position.y = Math.sin( time ) * 500 + 250;
+227c238,240
+< 				sphere.rotation.z = time * 0.51;
+---
+> 				sphere.rotation.z = time * 0.5;
+> 				
+> 				cameraRTT.updateCubeMap( renderer, scene );
